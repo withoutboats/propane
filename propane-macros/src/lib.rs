@@ -1,12 +1,14 @@
 extern crate proc_macro;
 
+mod elision;
+
 use proc_macro::*;
 use syn::fold::Fold;
 
 #[proc_macro_attribute]
 pub fn generator(_: TokenStream, input: TokenStream) -> TokenStream {
     if let Ok(item_fn) = syn::parse(input) {
-        let item_fn = Generator { outer_fn: true }.fold_item_fn(item_fn);
+        let item_fn = Generator { outer_fn: true, lifetimes: vec![] }.fold_item_fn(item_fn);
         quote::quote!(#item_fn).into()
     } else {
         panic!("#[generator] atribute can only be applied to functions");
@@ -15,14 +17,17 @@ pub fn generator(_: TokenStream, input: TokenStream) -> TokenStream {
 
 struct Generator {
     outer_fn: bool,
+    lifetimes: Vec<syn::Lifetime>,
 }
 
 impl Fold for Generator {
-    fn fold_item_fn(&mut self, i: syn::ItemFn) -> syn::ItemFn {
+    fn fold_item_fn(&mut self, mut i: syn::ItemFn) -> syn::ItemFn {
         if !self.outer_fn { return i }
 
+        let inputs = elision::unelide_lifetimes(&mut i.sig.generics.params, i.sig.inputs);
+        self.lifetimes = i.sig.generics.lifetimes().map(|l| l.lifetime.clone()).collect();
         let output = self.fold_return_type(i.sig.output);
-        let sig = syn::Signature { output, ..i.sig };
+        let sig = syn::Signature { output, inputs, ..i.sig };
 
         self.outer_fn = false;
 
@@ -40,7 +45,11 @@ impl Fold for Generator {
             ReturnType::Default => (Token![->](Span::call_site()), syn::parse_str("()").unwrap()),
             ReturnType::Type(arrow, ty) => (arrow, *ty),
         };
-        ReturnType::Type(arrow, Box::new(syn::parse2(quote::quote!(impl Iterator<Item = #ret>)).unwrap()))
+        let lifetimes = std::mem::replace(&mut self.lifetimes, vec![]);
+        let ret = syn::parse2(quote::quote!(
+                (impl Iterator<Item = #ret> #(+ #lifetimes )*)
+        )).unwrap();
+        ReturnType::Type(arrow, Box::new(ret))
     }
 
     fn fold_expr(&mut self, i: syn::Expr) -> syn::Expr {
