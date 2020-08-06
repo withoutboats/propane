@@ -1,0 +1,18 @@
+[package]
+name = "propane-macros"
+version = "0.1.0"
+authors = ["Without Boats <woboats@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+quote = "1.0.7"
+proc-macro2 = "1.0.19"
+
+[dependencies.syn]
+version = "1.0.35"
+features = ["fold", "full", "parsing"]
+
+[lib]
+proc-macro = true
