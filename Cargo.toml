@@ -1,12 +1,17 @@
 [package]
 name = "propane"
 version = "0.1.0"
-authors = ["Without Boats <woboats@gmail.com>"]
+authors = ["Without Boats <saoirse@without.boats>"]
 edition = "2018"
+license = "MIT OR Apache-2.0"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "a generator syntax experiment"
+repository = "https://github.com/withoutboats/propane"
+documentation = "https://docs.rs/propane"
+keywords = ["iterators", "generators"]
 
 [dependencies.propane-macros]
 path = "./propane-macros"
+version = "0.1.0"
 
 [workspace]
