@@ -2,7 +2,7 @@
 
 Propane is a thin wrapper around the unstable generator feature, allowing users to create free
 functions as generators. It implements a particular idea for how generators should be designed; a
-big part of why generators are still unstalbe today is that these design questions are still
+big part of why generators are still unstable today is that these design questions are still
 undecided.
 
 The syntax looks like this:
