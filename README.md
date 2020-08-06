@@ -44,7 +44,3 @@ usually are consumed in a way that does not require them to own all of their dat
 
 Therefore, it is potentially the case that generators restricted to not contain self-references are
 sufficient for this use case. Propane intends to explore that possibility.
-
-(Note: there is currently a bug where references are not allowed as arguments to generators at all.
-This is because we need to expand lifetimes ourselves to get the correct lifetime ellision for
-generators; an issue is open to track this problem.
