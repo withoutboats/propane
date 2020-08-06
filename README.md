@@ -32,8 +32,6 @@ intended to be lifted):
    interesting type. The `?` operator yields the error and then, on the next resumption, returns.
 3. A propane generator implements Unpin, and cannot be self-referential (unlike async functions).
 
-In essence propane allows the users
-
 ## Notes on the Unpin requirement
 
 Because of the signature of `Iterator::next`, it is always safe to move iterators between calls to
