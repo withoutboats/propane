@@ -64,17 +64,24 @@ impl Fold for Generator {
         match i {
             // Stream modifiers
             syn::Expr::Try(syn::ExprTry { expr, .. }) if self.is_async      => {
+                let expr = self.fold_expr(*expr);
                 syn::parse2(quote::quote!(propane::async_gen_try!(#expr))).unwrap()
             }
-            syn::Expr::Yield(syn::ExprYield { expr, .. }) if self.is_async  => {
+            syn::Expr::Yield(syn::ExprYield { expr: Some(expr), .. }) if self.is_async  => {
+                let expr = self.fold_expr(*expr);
                 syn::parse2(quote::quote!(propane::async_gen_yield!(#expr))).unwrap()
             }
+            syn::Expr::Yield(syn::ExprYield { expr: None, .. }) if self.is_async  => {
+                syn::parse2(quote::quote!(propane::async_gen_yield!(()))).unwrap()
+            }
             syn::Expr::Await(syn::ExprAwait { base: expr, ..}) if self.is_async   => {
+                let expr = self.fold_expr(*expr);
                 syn::parse2(quote::quote!(propane::async_gen_await!(#expr, __propane_stream_ctx))).unwrap()
             }
 
             // Iterator modifiers
             syn::Expr::Try(syn::ExprTry { expr, .. })                       => {
+                let expr = self.fold_expr(*expr);
                 syn::parse2(quote::quote!(propane::gen_try!(#expr))).unwrap()
             }
 
