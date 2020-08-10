@@ -7,9 +7,12 @@ use syn::fold::Fold;
 
 #[proc_macro_attribute]
 pub fn generator(_: TokenStream, input: TokenStream) -> TokenStream {
-    if let Ok(item_fn) = syn::parse(input) {
+    if let Ok(item_fn) = syn::parse(input.clone()) {
         let item_fn = Generator { outer_fn: true, is_async: false, lifetimes: vec![] }.fold_item_fn(item_fn);
         quote::quote!(#item_fn).into()
+    } else if let Ok(method) = syn::parse(input) {
+        let method = Generator { outer_fn: true, is_async: false, lifetimes: vec![] }.fold_impl_item_method(method);
+        quote::quote!(#method).into()
     } else {
         panic!("#[generator] atribute can only be applied to functions");
     }
@@ -39,6 +42,23 @@ impl Fold for Generator {
         let block = Box::new(make_fn_block(&inner, self.is_async));
 
         syn::ItemFn { sig, block, ..i }
+    }
+
+    fn fold_impl_item_method(&mut self, mut i: syn::ImplItemMethod) -> syn::ImplItemMethod {
+        if !self.outer_fn { return i }
+
+        let inputs = elision::unelide_lifetimes(&mut i.sig.generics.params, i.sig.inputs);
+        self.lifetimes = i.sig.generics.lifetimes().map(|l| l.lifetime.clone()).collect();
+
+        self.is_async = i.sig.asyncness.is_some();
+
+        let output = self.fold_return_type(i.sig.output);
+        let sig = syn::Signature { output, inputs, asyncness: None, ..i.sig };
+
+        let inner = self.fold_block(i.block);
+        let block = make_fn_block(&inner, self.is_async);
+
+        syn::ImplItemMethod { sig, block, ..i }
     }
 
     fn fold_return_type(&mut self, i: syn::ReturnType) -> syn::ReturnType {
@@ -94,7 +114,7 @@ impl Fold for Generator {
 fn make_fn_block(inner: &syn::Block, is_async: bool) -> syn::Block {
     if !is_async {
         syn::parse2(quote::quote! {{
-            let __ret = || {
+            let __ret = move || {
                 #inner;
                 #[allow(unreachable_code)]
                 {
@@ -108,7 +128,7 @@ fn make_fn_block(inner: &syn::Block, is_async: bool) -> syn::Block {
         }}).unwrap()
     } else {
         syn::parse2(quote::quote! {{
-            let __ret = static |mut __propane_stream_ctx| {
+            let __ret = static move |mut __propane_stream_ctx| {
                 #inner;
                 #[allow(unreachable_code)]
                 {
