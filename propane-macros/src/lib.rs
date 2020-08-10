@@ -4,24 +4,126 @@ mod elision;
 
 use proc_macro::*;
 use syn::fold::Fold;
+use syn::{ReturnType, Token};
+
+use proc_macro2::Span;
 
 #[proc_macro_attribute]
 pub fn generator(_: TokenStream, input: TokenStream) -> TokenStream {
+    let mut folder = Generator {
+        outer_fn: true,
+        is_async: false,
+        is_move: true,
+        lifetimes: vec![]
+    };
     if let Ok(item_fn) = syn::parse(input.clone()) {
-        let item_fn = Generator { outer_fn: true, is_async: false, lifetimes: vec![] }.fold_item_fn(item_fn);
+        let item_fn = folder.fold_item_fn(item_fn);
         quote::quote!(#item_fn).into()
     } else if let Ok(method) = syn::parse(input) {
-        let method = Generator { outer_fn: true, is_async: false, lifetimes: vec![] }.fold_impl_item_method(method);
+        let method = folder.fold_impl_item_method(method);
         quote::quote!(#method).into()
     } else {
         panic!("#[generator] atribute can only be applied to functions");
     }
 }
 
+#[proc_macro]
+pub fn gen(input: TokenStream) -> TokenStream {
+    let mut folder = Generator {
+        outer_fn: false,
+        is_async: false,
+        is_move: false,
+        lifetimes: vec![]
+    };
+    let block = folder.block(input.into());
+    quote::quote!(#block).into()
+}
+
+#[proc_macro]
+pub fn gen_move(input: TokenStream) -> TokenStream {
+    let mut folder = Generator {
+        outer_fn: false,
+        is_async: false,
+        is_move: true,
+        lifetimes: vec![]
+    };
+    let block = folder.block(input.into());
+    quote::quote!(#block).into()
+}
+
+#[proc_macro]
+pub fn async_gen(input: TokenStream) -> TokenStream {
+    let mut folder = Generator {
+        outer_fn: false,
+        is_async: true,
+        is_move: false,
+        lifetimes: vec![]
+    };
+    let block = folder.block(input.into());
+    quote::quote!(#block).into()
+}
+
+#[proc_macro]
+pub fn async_gen_move(input: TokenStream) -> TokenStream {
+    let mut folder = Generator {
+        outer_fn: false,
+        is_async: true,
+        is_move: true,
+        lifetimes: vec![]
+    };
+    let block = folder.block(input.into());
+    quote::quote!(#block).into()
+}
+
 struct Generator {
     outer_fn: bool,
     is_async: bool,
+    is_move: bool,
     lifetimes: Vec<syn::Lifetime>,
+}
+
+impl Generator {
+    fn block(&mut self, input: proc_macro2::TokenStream) -> syn::Block {
+        let block = syn::parse2(quote::quote!({ #input })).unwrap();
+        let block = self.fold_block(block);
+        self.finish(&block)
+    }
+
+    fn finish(&self, block: &syn::Block) -> syn::Block {
+        let move_token = match self.is_move {
+            true    => Some(Token![move](Span::call_site())),
+            false   => None,
+        };
+        if !self.is_async {
+            syn::parse2(quote::quote! {{
+                let __ret = #move_token || {
+                    #block;
+                    #[allow(unreachable_code)]
+                    {
+                        return;
+                        yield panic!();
+                    }
+                };
+
+                #[allow(unreachable_code)]
+                propane::__internal::GenIter(__ret)
+            }}).unwrap()
+        } else {
+            syn::parse2(quote::quote! {{
+                let __ret = static #move_token |mut __propane_stream_ctx| {
+                    #block;
+                    #[allow(unreachable_code)]
+                    {
+                        return;
+                        yield panic!();
+                    }
+                };
+
+                #[allow(unreachable_code)]
+                unsafe { propane::__internal::GenStream::new(__ret) }
+            }}).unwrap()
+        }
+    }
 }
 
 impl Fold for Generator {
@@ -39,7 +141,7 @@ impl Fold for Generator {
         self.outer_fn = false;
 
         let inner = self.fold_block(*i.block);
-        let block = Box::new(make_fn_block(&inner, self.is_async));
+        let block = Box::new(self.finish(&inner));
 
         syn::ItemFn { sig, block, ..i }
     }
@@ -56,14 +158,12 @@ impl Fold for Generator {
         let sig = syn::Signature { output, inputs, asyncness: None, ..i.sig };
 
         let inner = self.fold_block(i.block);
-        let block = make_fn_block(&inner, self.is_async);
+        let block = self.finish(&inner);
 
         syn::ImplItemMethod { sig, block, ..i }
     }
 
     fn fold_return_type(&mut self, i: syn::ReturnType) -> syn::ReturnType {
-        use syn::{ReturnType, Token};
-        use proc_macro2::Span;
         if !self.outer_fn { return i; }
         
         let (arrow, ret) = match i {
@@ -108,37 +208,5 @@ impl Fold for Generator {
             // Everything else
             _   => syn::fold::fold_expr(self, i)
         }
-    }
-}
-
-fn make_fn_block(inner: &syn::Block, is_async: bool) -> syn::Block {
-    if !is_async {
-        syn::parse2(quote::quote! {{
-            let __ret = move || {
-                #inner;
-                #[allow(unreachable_code)]
-                {
-                    return;
-                    yield panic!();
-                }
-            };
-
-            #[allow(unreachable_code)]
-            propane::__internal::GenIter(__ret)
-        }}).unwrap()
-    } else {
-        syn::parse2(quote::quote! {{
-            let __ret = static move |mut __propane_stream_ctx| {
-                #inner;
-                #[allow(unreachable_code)]
-                {
-                    return;
-                    yield panic!();
-                }
-            };
-
-            #[allow(unreachable_code)]
-            unsafe { propane::__internal::GenStream::new(__ret) }
-        }}).unwrap()
     }
 }

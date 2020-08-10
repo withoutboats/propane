@@ -67,6 +67,10 @@
 /// }
 /// ```
 pub use propane_macros::generator;
+pub use propane_macros::gen;
+pub use propane_macros::gen_move;
+pub use propane_macros::async_gen;
+pub use propane_macros::async_gen_move;
 
 #[doc(hidden)]
 pub mod __internal {
