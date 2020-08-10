@@ -10,6 +10,9 @@ repository = "https://github.com/withoutboats/propane"
 documentation = "https://docs.rs/propane"
 keywords = ["iterators", "generators"]
 
+[dependencies]
+futures-core = "0.3.5"
+
 [dependencies.propane-macros]
 path = "./propane-macros"
 version = "0.1.0"

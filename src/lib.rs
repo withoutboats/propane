@@ -73,6 +73,9 @@ pub mod __internal {
     use std::marker::Unpin;
     use std::ops::{Generator, GeneratorState};
     use std::pin::Pin;
+    use std::task::{Context, Poll};
+
+    pub use futures_core::Stream;
 
     pub struct GenIter<G>(pub G);
 
@@ -87,6 +90,30 @@ pub mod __internal {
         }
     }
 
+    pub struct GenStream<G>(G);
+
+    impl<G> GenStream<G> {
+        pub unsafe fn new(gen: G) -> GenStream<G> { GenStream(gen) }
+    }
+
+    impl<G: Generator<*mut (), Yield = Poll<T>, Return = ()>, T> Stream for GenStream<G> {
+        type Item = T;
+
+        fn poll_next(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+            let ctx: *mut () = ctx as *mut Context<'_> as *mut ();
+
+            unsafe {
+                let gen: Pin<&mut G> = Pin::map_unchecked_mut(self, |this| &mut this.0);
+
+                match gen.resume(ctx) {
+                    GeneratorState::Complete(())                => Poll::Ready(None),
+                    GeneratorState::Yielded(Poll::Ready(item))  => Poll::Ready(Some(item)),
+                    GeneratorState::Yielded(Poll::Pending)      => Poll::Pending,
+                }
+            }
+        }
+    }
+
     #[doc(hidden)]
     #[macro_export]
     macro_rules! gen_try {
@@ -97,6 +124,49 @@ pub mod __internal {
                 Err(err)    => {
                     yield <_ as Try>::from_error(err);
                     return;
+                }
+            }
+        }}
+    }
+
+    #[doc(hidden)]
+    #[macro_export]
+    macro_rules! async_gen_try {
+        ($e:expr) => {{
+            use std::ops::Try;
+            match Try::into_result($e) {
+                Ok(ok)      => ok,
+                Err(err)    => {
+                    yield std::task::Poll::Ready(<_ as Try>::from_error(err));
+                    return;
+                }
+            }
+        }}
+    }
+
+    #[doc(hidden)]
+    #[macro_export]
+    macro_rules! async_gen_yield {
+        ($e:expr) => {{
+            yield std::task::Poll::Ready($e)
+        }}
+    }
+
+    #[doc(hidden)]
+    #[macro_export]
+    macro_rules! async_gen_await {
+        ($e:expr, $ctx:expr) => {{
+            unsafe {
+                use std::pin::Pin;
+                use std::task::{Poll, Context};
+                let ctx = &mut *($ctx as *mut Context<'_>);
+                let mut e = $e;
+                let mut future = Pin::new_unchecked(&mut e);
+                loop {
+                    match std::future::Future::poll(Pin::as_mut(&mut future), ctx) {
+                        Poll::Ready(x)   => break x,
+                        Poll::Pending    => $ctx = yield Poll::Pending,
+                    }
                 }
             }
         }}
