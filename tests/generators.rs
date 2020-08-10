@@ -1,4 +1,5 @@
 #![feature(generators, generator_trait, try_trait)]
+#![no_std]
 
 #[propane::generator]
 fn foo() -> i32 {

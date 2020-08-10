@@ -3,6 +3,7 @@
 //! It is intended to explore one particular point in the design space of generators. More
 //! documentation can be found in the description of the attribute.
 #![feature(generator_trait)]
+#![no_std]
 
 /// This macro can be applied to functions to make them into generators.
 ///
@@ -74,10 +75,10 @@ pub use propane_macros::async_gen_move;
 
 #[doc(hidden)]
 pub mod __internal {
-    use std::marker::Unpin;
-    use std::ops::{Generator, GeneratorState};
-    use std::pin::Pin;
-    use std::task::{Context, Poll};
+    use core::marker::Unpin;
+    use core::ops::{Generator, GeneratorState};
+    use core::pin::Pin;
+    use core::task::{Context, Poll};
 
     pub use futures_core::Stream;
 
@@ -122,7 +123,7 @@ pub mod __internal {
     #[macro_export]
     macro_rules! gen_try {
         ($e:expr) => {{
-            use std::ops::Try;
+            use core::ops::Try;
             match Try::into_result($e) {
                 Ok(ok)      => ok,
                 Err(err)    => {
@@ -137,11 +138,11 @@ pub mod __internal {
     #[macro_export]
     macro_rules! async_gen_try {
         ($e:expr) => {{
-            use std::ops::Try;
+            use core::ops::Try;
             match Try::into_result($e) {
                 Ok(ok)      => ok,
                 Err(err)    => {
-                    yield std::task::Poll::Ready(<_ as Try>::from_error(err));
+                    yield core::task::Poll::Ready(<_ as Try>::from_error(err));
                     return;
                 }
             }
@@ -152,7 +153,7 @@ pub mod __internal {
     #[macro_export]
     macro_rules! async_gen_yield {
         ($e:expr) => {{
-            yield std::task::Poll::Ready($e)
+            yield core::task::Poll::Ready($e)
         }}
     }
 
@@ -161,13 +162,13 @@ pub mod __internal {
     macro_rules! async_gen_await {
         ($e:expr, $ctx:expr) => {{
             unsafe {
-                use std::pin::Pin;
-                use std::task::{Poll, Context};
+                use core::pin::Pin;
+                use core::task::{Poll, Context};
                 let ctx = &mut *($ctx as *mut Context<'_>);
                 let mut e = $e;
                 let mut future = Pin::new_unchecked(&mut e);
                 loop {
-                    match std::future::Future::poll(Pin::as_mut(&mut future), ctx) {
+                    match core::future::Future::poll(Pin::as_mut(&mut future), ctx) {
                         Poll::Ready(x)   => break x,
                         Poll::Pending    => $ctx = yield Poll::Pending,
                     }
