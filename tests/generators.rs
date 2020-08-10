@@ -60,3 +60,18 @@ fn test_foo_method() {
     assert_eq!(iter.next(), Some(0));
     assert!(iter.next().is_none());
 }
+
+#[test]
+fn anonymous_generator() {
+    let mut iter = propane::gen! {
+        for x in 0..10 {
+            yield x;
+        }
+    };
+
+    for x in 0..10 {
+        assert_eq!(iter.next(), Some(x));
+    }
+
+    assert!(iter.next().is_none());
+}

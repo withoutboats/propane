@@ -35,8 +35,7 @@ pub fn gen(input: TokenStream) -> TokenStream {
         is_move: false,
         lifetimes: vec![]
     };
-    let block = folder.fold_block(syn::parse(input).unwrap());
-    let block = folder.finish(&block);
+    let block = folder.block(input.into());
     quote::quote!(#block).into()
 }
 
@@ -48,8 +47,7 @@ pub fn gen_move(input: TokenStream) -> TokenStream {
         is_move: true,
         lifetimes: vec![]
     };
-    let block = folder.fold_block(syn::parse(input).unwrap());
-    let block = folder.finish(&block);
+    let block = folder.block(input.into());
     quote::quote!(#block).into()
 }
 
@@ -61,8 +59,7 @@ pub fn async_gen(input: TokenStream) -> TokenStream {
         is_move: false,
         lifetimes: vec![]
     };
-    let block = folder.fold_block(syn::parse(input).unwrap());
-    let block = folder.finish(&block);
+    let block = folder.block(input.into());
     quote::quote!(#block).into()
 }
 
@@ -74,8 +71,7 @@ pub fn async_gen_move(input: TokenStream) -> TokenStream {
         is_move: true,
         lifetimes: vec![]
     };
-    let block = folder.fold_block(syn::parse(input).unwrap());
-    let block = folder.finish(&block);
+    let block = folder.block(input.into());
     quote::quote!(#block).into()
 }
 
@@ -87,6 +83,12 @@ struct Generator {
 }
 
 impl Generator {
+    fn block(&mut self, input: proc_macro2::TokenStream) -> syn::Block {
+        let block = syn::parse2(quote::quote!({ #input })).unwrap();
+        let block = self.fold_block(block);
+        self.finish(&block)
+    }
+
     fn finish(&self, block: &syn::Block) -> syn::Block {
         let move_token = match self.is_move {
             true    => Some(Token![move](Span::call_site())),
