@@ -41,3 +41,22 @@ fn test_result() {
     assert_eq!(result.next(), Some(Err(())));
     assert!(result.next().is_none())
 }
+
+struct Foo(Option<i32>);
+
+impl Foo {
+    #[propane::generator]
+    fn method(&mut self) -> i32 {
+        while let Some(n) = self.0.take() {
+            yield n;
+        }
+    }
+}
+
+#[test]
+fn test_foo_method() {
+    let mut foo = Foo(Some(0));
+    let mut iter = foo.method();
+    assert_eq!(iter.next(), Some(0));
+    assert!(iter.next().is_none());
+}

@@ -66,6 +66,15 @@ impl<'a> Fold for UnelideLifetimes<'a> {
         let elem = Box::new(self.fold_type(*elem));
         TypeReference { and_token, lifetime, mutability, elem }
     }
+
+    fn fold_receiver(&mut self, receiver: Receiver) -> Receiver {
+        let reference = receiver.reference.map(|(and, lifetime)| {
+            let lifetime = self.expand_lifetime(lifetime);
+            (and, Some(lifetime))
+        });
+
+        Receiver { reference, ..receiver }
+    }
 }
 
 fn lifetime_index(generics: &Punctuated<GenericParam, Comma>) -> usize {
