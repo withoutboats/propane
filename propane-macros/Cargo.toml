@@ -15,5 +15,8 @@ proc-macro2 = "1.0.19"
 version = "1.0.35"
 features = ["fold", "full", "parsing"]
 
+[features]
+fehler = []
+
 [lib]
 proc-macro = true

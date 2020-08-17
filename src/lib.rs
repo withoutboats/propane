@@ -82,6 +82,9 @@ pub mod __internal {
 
     pub use futures_core::Stream;
 
+    #[cfg(fehler)]
+    pub use fehler_crate as fehler;
+
     pub struct GenIter<G>(pub G);
 
     impl<G: Generator<Return = ()> + Unpin> Iterator for GenIter<G> {

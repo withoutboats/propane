@@ -4,17 +4,26 @@ mod elision;
 
 use proc_macro::*;
 use syn::fold::Fold;
+use syn::parse::{Parse, ParseStream, Result};
 use syn::{ReturnType, Token};
 
 use proc_macro2::Span;
 
 #[proc_macro_attribute]
-pub fn generator(_: TokenStream, input: TokenStream) -> TokenStream {
+pub fn generator(args: TokenStream, input: TokenStream) -> TokenStream {
+    let fehler_info = if !args.is_empty() {
+        let args: Args = syn::parse(args).unwrap();
+        Some(args.throws)
+    } else {
+        None
+    };
+
     let mut folder = Generator {
         outer_fn: true,
         is_async: false,
         is_move: true,
-        lifetimes: vec![]
+        lifetimes: vec![],
+        fehler_info,
     };
     if let Ok(item_fn) = syn::parse(input.clone()) {
         let item_fn = folder.fold_item_fn(item_fn);
@@ -33,6 +42,7 @@ pub fn gen(input: TokenStream) -> TokenStream {
         outer_fn: false,
         is_async: false,
         is_move: false,
+        fehler_info: None,
         lifetimes: vec![]
     };
     let block = folder.block(input.into());
@@ -45,6 +55,7 @@ pub fn gen_move(input: TokenStream) -> TokenStream {
         outer_fn: false,
         is_async: false,
         is_move: true,
+        fehler_info: None,
         lifetimes: vec![]
     };
     let block = folder.block(input.into());
@@ -57,6 +68,7 @@ pub fn async_gen(input: TokenStream) -> TokenStream {
         outer_fn: false,
         is_async: true,
         is_move: false,
+        fehler_info: None,
         lifetimes: vec![]
     };
     let block = folder.block(input.into());
@@ -69,16 +81,40 @@ pub fn async_gen_move(input: TokenStream) -> TokenStream {
         outer_fn: false,
         is_async: true,
         is_move: true,
+        fehler_info: None,
         lifetimes: vec![]
     };
     let block = folder.block(input.into());
     quote::quote!(#block).into()
 }
 
+struct Args {
+    throws: proc_macro2::TokenStream,
+}
+
+impl Parse for Args {
+    #[cfg(fehler)]
+    fn parse(input: ParseStream) -> Result<Args> {
+        let ident: syn::Ident = input.parse()?;
+        assert_eq!(ident, "throws", "propane::generator does not take arguments other than `throws`");
+        Ok(Args {
+            throws: input.cursor().token_stream(),
+        })
+    }
+
+    #[cfg(not(fehler))]
+    fn parse(input: ParseStream) -> Result<Args> {
+        let ident: syn::Ident = input.parse()?;
+        assert_eq!(ident, "throws", "propane::generator does not take arguments other than `throws`");
+        panic!("propane::generator only takes `throws` argument with the `fehler` feature turned on");
+    }
+}
+
 struct Generator {
     outer_fn: bool,
     is_async: bool,
     is_move: bool,
+    fehler_info: Option<proc_macro2::TokenStream>,
     lifetimes: Vec<syn::Lifetime>,
 }
 
@@ -87,6 +123,22 @@ impl Generator {
         let block = syn::parse2(quote::quote!({ #input })).unwrap();
         let block = self.fold_block(block);
         self.finish(&block)
+    }
+
+    fn visit_fn_attrs(&mut self, attrs: &mut Vec<syn::Attribute>) {
+        struct OuterAttributes(Vec<syn::Attribute>);
+        impl Parse for OuterAttributes {
+            fn parse(input: ParseStream) -> Result<OuterAttributes> {
+                input.call(syn::Attribute::parse_outer).map(OuterAttributes)
+            }
+        }
+
+        if let Some(args) = self.fehler_info.take() {
+            let attr: OuterAttributes = syn::parse2(quote::quote! {
+                #[::propane::__internal::fehler::throws(@__internal_propane_integration #args)]
+            }).unwrap();
+            attrs.extend(attr.0);
+        }
     }
 
     fn finish(&self, block: &syn::Block) -> syn::Block {
@@ -106,7 +158,7 @@ impl Generator {
                 };
 
                 #[allow(unreachable_code)]
-                propane::__internal::GenIter(__ret)
+                ::propane::__internal::GenIter(__ret)
             }}).unwrap()
         } else {
             syn::parse2(quote::quote! {{
@@ -120,7 +172,7 @@ impl Generator {
                 };
 
                 #[allow(unreachable_code)]
-                unsafe { propane::__internal::GenStream::new(__ret) }
+                unsafe { ::propane::__internal::GenStream::new(__ret) }
             }}).unwrap()
         }
     }
@@ -129,6 +181,8 @@ impl Generator {
 impl Fold for Generator {
     fn fold_item_fn(&mut self, mut i: syn::ItemFn) -> syn::ItemFn {
         if !self.outer_fn { return i }
+
+        self.visit_fn_attrs(&mut i.attrs);
 
         let inputs = elision::unelide_lifetimes(&mut i.sig.generics.params, i.sig.inputs);
         self.lifetimes = i.sig.generics.lifetimes().map(|l| l.lifetime.clone()).collect();
@@ -148,6 +202,7 @@ impl Fold for Generator {
 
     fn fold_impl_item_method(&mut self, mut i: syn::ImplItemMethod) -> syn::ImplItemMethod {
         if !self.outer_fn { return i }
+        self.visit_fn_attrs(&mut i.attrs);
 
         let inputs = elision::unelide_lifetimes(&mut i.sig.generics.params, i.sig.inputs);
         self.lifetimes = i.sig.generics.lifetimes().map(|l| l.lifetime.clone()).collect();
@@ -173,7 +228,7 @@ impl Fold for Generator {
         let lifetimes = std::mem::replace(&mut self.lifetimes, vec![]);
 
         let ret = if self.is_async {
-            syn::parse2(quote::quote!((impl propane::__internal::Stream<Item = #ret> #(+ #lifetimes )*))).unwrap()
+            syn::parse2(quote::quote!((impl ::propane::__internal::Stream<Item = #ret> #(+ #lifetimes )*))).unwrap()
         } else {
             syn::parse2(quote::quote!((impl Iterator<Item = #ret> #(+ #lifetimes )*))).unwrap()
         };
