@@ -1,4 +1,4 @@
-#![feature(generators, generator_trait, try_trait)]
+#![feature(generators, generator_trait, try_trait_v2)]
 #![no_std]
 
 #[propane::generator]

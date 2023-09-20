@@ -29,12 +29,12 @@
 /// In order to use this attribute, you must turn on all of these features:
 /// - `generators`
 /// - `generator_trait`
-/// - `try_trait`
+/// - `try_trait_v2`
 ///
 /// ## Example
 ///
 /// ```rust
-/// #![feature(generators, generator_trait, try_trait)]
+/// #![feature(generators, generator_trait, try_trait_v2)]
 ///
 /// #[propane::generator]
 /// fn fizz_buzz() -> String {
@@ -123,11 +123,11 @@ pub mod __internal {
     #[macro_export]
     macro_rules! gen_try {
         ($e:expr) => {{
-            use core::ops::Try;
-            match Try::into_result($e) {
-                Ok(ok)      => ok,
-                Err(err)    => {
-                    yield <_ as Try>::from_error(err);
+            use core::ops::{Try, ControlFlow, FromResidual};
+            match Try::branch($e) {
+                ControlFlow::Continue(value) => value,
+                ControlFlow::Break(residual) => {
+                    yield <_ as FromResidual>::from_residual(residual);
                     return;
                 }
             }
@@ -138,11 +138,11 @@ pub mod __internal {
     #[macro_export]
     macro_rules! async_gen_try {
         ($e:expr) => {{
-            use core::ops::Try;
-            match Try::into_result($e) {
-                Ok(ok)      => ok,
-                Err(err)    => {
-                    yield core::task::Poll::Ready(<_ as Try>::from_error(err));
+            use core::ops::{Try, ControlFlow, FromResidual};
+            match Try::branch($e) {
+                ControlFlow::Continue(value) => value,
+                ControlFlow::Break(residual) => {
+                    yield core::task::Poll::Ready(<_ as FromResidual>::from_residual(residual));
                     return;
                 }
             }
